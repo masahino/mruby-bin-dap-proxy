@@ -1,0 +1,7 @@
+name: mruby-dap-proxy
+description: DapProxy class
+author: masahino
+website: https://github.com/masahino/mruby-dap-proxy
+protocol: git
+repository: https://github.com/masahino/mruby-dap-proxy.git
+license: MIT
