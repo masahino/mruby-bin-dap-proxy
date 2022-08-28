@@ -82,7 +82,7 @@ class DapProxy
 
     mrb_stack = { 'column' => 1, 'id' => 0, 'name' => MRUBY_CODE_FETCH_FUNC }
     @client.scopes({ 'frameId' => frame_id }) do |res|
-      return message if res['sucess'] == false
+      return message if res['success'] == false
     end
     @client.variables({ 'variablesReference' => 2 }) do |res|
       if res['success']
@@ -130,6 +130,8 @@ class DapProxy
         if !@mruby_code_fetch_bp.nil? && @mruby_code_fetch_bp.use_temporary_breakpoint
           delete_temporary_breakpoint
         end
+      when 'terminated'
+        terminate(message)
       end
     end
     if message['type'] == 'response'
@@ -141,6 +143,11 @@ class DapProxy
     send_message($stdout, message)
   end
 
+  def terminate(message)
+    send_message($stdout, message)
+    exit
+  end
+
   def run
     loop do
       readable, _writable = IO.select(@readings)
@@ -148,7 +155,7 @@ class DapProxy
         if ri == $stdin
           process_client
         elsif ri == @client.io
-          process_adapter unless @client.io.eof?
+          process_adapter # unless @client.io.eof?
         end
       end
     end
