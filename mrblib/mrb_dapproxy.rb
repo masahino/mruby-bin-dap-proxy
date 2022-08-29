@@ -50,6 +50,58 @@ class DapProxy
     message
   end
 
+  def mruby_parse_locals(line)
+    variables = []
+    index = 0
+    line.scan(/\{name=\\"(.+?)\\",value=\\"(.+?)\\",type=\\"(.+?)\\"\}/) do |match|
+      value = if match[2] == 'String'
+                match[1].delete_prefix('\\').gsub(/\\"/, '"')
+              else
+                match[1]
+              end
+      variables.push({ 'name' => match[0], 'value' => value, 'type' => match[2],
+                       'variablesReference' => index })
+      index += 1
+    end
+    variables
+  end
+
+  def mruby_scopes(message)
+    return message if @mruby_code_fetch_bp.nil?
+
+    @client.evaluate({ 'expression' => '`expr mrb_gdb_get_locals(mrb)', 'frameId' => @last_stack['id'] }) do |res|
+      if res['success']
+        variables = mruby_parse_locals(res['body']['result'])
+        scope_body = { 'scopes' => [{ 'name' => 'Local variables',
+                                      'presentationHint' => 'locals',
+                                      'namedVariables' => variables.size,
+                                      'indexedVariables' => 0,
+                                      'expensive' => false,
+                                      'variablesReference' => 1 }] }
+        response = { 'seq' => res['seq'], 'type' => 'response', 'request_seq' => message['seq'],
+                     'success' => true, 'command' => 'scopes', 'body' => scope_body }
+        send_message($stdout, response)
+        return nil
+      end
+    end
+    message
+  end
+
+  def mruby_variables(message)
+    return message if @mruby_code_fetch_bp.nil?
+
+    @client.evaluate({ 'expression' => '`expr mrb_gdb_get_locals(mrb)', 'frameId' => @last_stack['id'] }) do |res|
+      if res['success']
+        variables = mruby_parse_locals(res['body']['result'])
+        response = { 'seq' => res['seq'], 'type' => 'response', 'request_seq' => message['seq'],
+                     'success' => true, 'command' => 'variables', 'body' => { 'variables' => variables } }
+        send_message($stdout, response)
+        return nil
+      end
+    end
+    message
+  end
+
   def process_client
     headers, message = recv_message($stdin)
     return if headers == {}
@@ -68,6 +120,16 @@ class DapProxy
         if !@last_stack.nil? && File.extname(@last_stack['source']['path']) == '.rb'
           message = mruby_next(message)
         end
+      when 'scopes'
+        if !@last_stack.nil? && message['arguments']['frameId'] == @last_stack['id']
+          message = mruby_scopes(message)
+          return if message.nil?
+        end
+      when 'variables'
+        if !@last_stack.nil? && File.extname(@last_stack['source']['path']) == '.rb'
+          message = mruby_variables(message)
+          return if message.nil?
+        end
       end
     end
     @request_buffer.push message
@@ -80,7 +142,7 @@ class DapProxy
 
     return message if @last_stack['source']['path'] != @mruby_code_fetch_source['path']
 
-    mrb_stack = { 'column' => 1, 'id' => 0, 'name' => MRUBY_CODE_FETCH_FUNC }
+    mrb_stack = { 'column' => 1, 'id' => @last_stack['id'] - 1, 'name' => MRUBY_CODE_FETCH_FUNC }
     @client.scopes({ 'frameId' => frame_id }) do |res|
       return message if res['success'] == false
     end
