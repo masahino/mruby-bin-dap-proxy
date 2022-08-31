@@ -1,8 +1,8 @@
 class DapProxy
   MRUBY_CODE_FETCH_FUNC = 'mrb_gdb_code_fetch'.freeze
 
-  def initialize
-    @client = DAP::Client.new('lldb-vscode', {})
+  def initialize(adapter = 'lldb-vscode', adapter_args = {})
+    @client = DAP::Client.new(adapter, adapter_args)
     #    @client = DAP::Client.new("#{ENV['HOME']}/.vscode/extensions/vadimcn.vscode-lldb-1.7.4/adapter/codelldb",
     #        { 'args' => ['--port 4711'], 'port' => 4711 })
     @client.exec_debug_adapter
@@ -18,6 +18,8 @@ class DapProxy
   end
 
   def breakpoints_c2r(message)
+    return message if File.extname(message['arguments']['source']['path']) != '.rb'
+
     mrb_filename = message['arguments']['source']['path']
     prepare_mruby_breakpoint if @mruby_code_fetch_source.nil?
     return message if @mruby_code_fetch_bp.nil?
@@ -28,8 +30,15 @@ class DapProxy
     message
   end
 
+  def stop_at_mruby_code?
+    return false if @last_stack.nil?
+    return true if File.extname(@last_stack['source']['path']) == '.rb'
+
+    false
+  end
+
   def mruby_step_in(message)
-    return message if @mruby_code_fetch_bp.nil?
+    return message unless stop_at_mruby_code?
 
     @mruby_code_fetch_bp.use_stepin_breakpoint = true
     @client.setBreakpoints(@mruby_code_fetch_bp.c_breakpoints) do |res|
@@ -40,7 +49,7 @@ class DapProxy
   end
 
   def mruby_next(message)
-    return message if @mruby_code_fetch_bp.nil?
+    return message unless stop_at_mruby_code?
 
     @mruby_code_fetch_bp.stepover_breakpoint = @last_ciidx
     @client.setBreakpoints(@mruby_code_fetch_bp.c_breakpoints) do |res|
@@ -68,6 +77,8 @@ class DapProxy
 
   def mruby_scopes(message)
     return message if @mruby_code_fetch_bp.nil?
+    return message if @last_stack.nil?
+    return message if message['arguments']['frameId'] != @last_stack['id']
 
     @client.evaluate({ 'expression' => '`expr mrb_gdb_get_locals(mrb)', 'frameId' => @last_stack['id'] }) do |res|
       if res['success']
@@ -88,7 +99,7 @@ class DapProxy
   end
 
   def mruby_variables(message)
-    return message if @mruby_code_fetch_bp.nil?
+    return message unless stop_at_mruby_code?
 
     @client.evaluate({ 'expression' => '`expr mrb_gdb_get_locals(mrb)', 'frameId' => @last_stack['id'] }) do |res|
       if res['success']
@@ -109,27 +120,17 @@ class DapProxy
     if message['type'] == 'request'
       case message['command']
       when 'setBreakpoints'
-        if File.extname(message['arguments']['source']['path']) == '.rb'
-          message = breakpoints_c2r(message)
-        end
+        message = breakpoints_c2r(message)
       when 'stepIn'
-        if !@last_stack.nil? && File.extname(@last_stack['source']['path']) == '.rb'
-          message = mruby_step_in(message)
-        end
+        message = mruby_step_in(message)
       when 'next'
-        if !@last_stack.nil? && File.extname(@last_stack['source']['path']) == '.rb'
-          message = mruby_next(message)
-        end
+        message = mruby_next(message)
       when 'scopes'
-        if !@last_stack.nil? && message['arguments']['frameId'] == @last_stack['id']
-          message = mruby_scopes(message)
-          return if message.nil?
-        end
+        message = mruby_scopes(message)
+        return if message.nil?
       when 'variables'
-        if !@last_stack.nil? && File.extname(@last_stack['source']['path']) == '.rb'
-          message = mruby_variables(message)
-          return if message.nil?
-        end
+        message = mruby_variables(message)
+        return if message.nil?
       end
     end
     @request_buffer.push message
