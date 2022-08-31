@@ -1,4 +1,4 @@
-MRuby::Gem::Specification.new('mruby-dap-proxy') do |spec|
+MRuby::Gem::Specification.new('mruby-bin-dap-proxy') do |spec|
   spec.bins = ['mruby-dap-proxy']
   spec.license = 'MIT'
   spec.authors = 'masahino'
