@@ -17,7 +17,7 @@ class DapProxy
     @request_buffer = []
   end
 
-  def breakpoints_c2r(message)
+  def breakpoints_r2c(message)
     return message if File.extname(message['arguments']['source']['path']) != '.rb'
 
     mrb_filename = message['arguments']['source']['path']
@@ -27,6 +27,20 @@ class DapProxy
     @mruby_code_fetch_bp.clear_breakpoints(mrb_filename)
     @mruby_code_fetch_bp.set_breakpoints(mrb_filename, message['arguments']['breakpoints'])
     message['arguments'] = @mruby_code_fetch_bp.c_breakpoints
+    message
+  end
+
+  def breakpoints_c2r(message)
+    @request_buffer.select { |req| req['seq'] == message['request_seq'] }.each do |org_req|
+      org_source = org_req['arguments']['source']
+      org_bp = org_req['arguments']['breakpoints']
+      message['body']['breakpoints'].each_with_index do |bp, i|
+        unless bp['source'].nil?
+          message['body']['breakpoints'][i]['source'] = org_source
+          message['body']['breakpoints'][i]['line'] = org_bp[i]['line']
+        end
+      end
+    end
     message
   end
 
@@ -62,7 +76,7 @@ class DapProxy
   def mruby_parse_locals(line)
     variables = []
     index = 0
-    line.scan(/\{name=\\"(.+?)\\",value=\\"(.+?)\\",type=\\"(.+?)\\"\}/) do |match|
+    line.scan(/\{name=\\?"(.+?)\\?",value=\\?"(.+?)\\?",type=\\?"(.+?)\\?"\}/) do |match|
       value = if match[2] == 'String'
                 match[1].delete_prefix('\\').gsub(/\\"/, '"')
               else
@@ -118,9 +132,10 @@ class DapProxy
     return if headers == {}
 
     if message['type'] == 'request'
+      @request_buffer.push message.dup
       case message['command']
       when 'setBreakpoints'
-        message = breakpoints_c2r(message)
+        message = breakpoints_r2c(message)
       when 'stepIn'
         message = mruby_step_in(message)
       when 'next'
@@ -133,14 +148,20 @@ class DapProxy
         return if message.nil?
       end
     end
-    @request_buffer.push message
     @client.send_message(message)
   end
 
   def add_mruby_stack(message)
+    levels = 0
+    @request_buffer.select { |req| req['seq'] == message['request_seq'] }.each do |org_req|
+      if !org_req['arguments']['startFrame'].nil? && org_req['arguments']['startFrame'] > 0
+        return message
+      end
+      levels = org_req['arguments']['levels'] unless org_req['arguments']['levels'].nil?
+    end
+
     @last_stack = message['body']['stackFrames'][0]
     frame_id = @last_stack['id'].to_i
-
     return message if @last_stack['source']['path'] != @mruby_code_fetch_source['path']
 
     mrb_stack = { 'column' => 1, 'id' => @last_stack['id'] - 1, 'name' => MRUBY_CODE_FETCH_FUNC }
@@ -157,7 +178,12 @@ class DapProxy
           @last_ciidx = var['value'].to_i if var['name'] == 'prev_ciidx'
         end
         @last_stack = mrb_stack
-        message['body']['stackFrames'].unshift mrb_stack
+        message['body']['totalFrames'] += 1
+        if levels == 1
+          message['body']['stackFrames'][0] = mrb_stack
+        else
+          message['body']['stackFrames'].unshift mrb_stack
+        end
       end
     end
     message
@@ -185,6 +211,13 @@ class DapProxy
     end
   end
 
+  def restore_response(message)
+    @request_buffer.select { |req| req['seq'] == message['request_seq'] }.each do |org_req|
+      message['command'] = org_req['command']
+    end
+    message
+  end
+
   def process_adapter
     message = @client.wait_message
     if message['type'] == 'event'
@@ -199,10 +232,15 @@ class DapProxy
     end
     if message['type'] == 'response'
       case message['command']
+      when 'setBreakpoints'
+        message = breakpoints_c2r(message) unless @mruby_code_fetch_source.nil?
       when 'stackTrace'
         message = add_mruby_stack(message) unless @mruby_code_fetch_source.nil?
+      when 'stepIn', 'next'
+        message = restore_response(message) unless @mruby_code_fetch_source.nil?
       end
     end
+    @request_buffer.delete_if { |request| request['seq'] == message['request_seq'] }
     send_message($stdout, message)
   end
 
