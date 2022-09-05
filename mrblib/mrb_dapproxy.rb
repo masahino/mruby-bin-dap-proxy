@@ -263,6 +263,13 @@ class DapProxy
   end
 end
 
-def __main__(_argv)
-  DapProxy.new.run
+def __main__(argv)
+  lldb_vscode_path = 'lldb-vscode'
+  argv.each_with_index do |arg, i|
+    case arg
+    when '-l', '--lldb_vscode_path'
+      lldb_vscode_path = argv[i + 1] unless argv[i + 1].nil?
+    end
+  end
+  DapProxy.new(lldb_vscode_path).run
 end
