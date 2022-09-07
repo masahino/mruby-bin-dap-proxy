@@ -85,6 +85,8 @@ class DapProxy
       case message['command']
       when 'setBreakpoints'
         message = breakpoints_r2c(message)
+      when 'setFunctionBreakponts'
+        message = mruby_set_function_breakpoints(message)
       when 'stepIn'
         message = mruby_step_in(message)
       when 'next'

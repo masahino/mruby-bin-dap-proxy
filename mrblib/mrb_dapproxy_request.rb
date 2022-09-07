@@ -108,4 +108,11 @@ class DapProxy
     end
     message
   end
+
+  def mruby_set_function_breakpoints(message)
+    return message if @mruby_code_fetch_bp.nil?
+
+    message['arguments']['breakpoints'].concat(@mruby_code_fetch_bp.c_breakpoints['breakpoints'])
+    message
+  end
 end
