@@ -1,9 +1,8 @@
 class MrubyBreakpoint
   attr_accessor :use_stepin_breakpoint, :stepover_breakpoint
 
-  def initialize(filename, line)
-    @c_filename = filename
-    @c_line = line
+  def initialize(function_name)
+    @code_fetch_hook = function_name
     @mruby_breakpoints = {}
     @use_stepin_breakpoint = false
     @stepover_breakpoint = 0
@@ -14,20 +13,20 @@ class MrubyBreakpoint
   end
 
   def c_breakpoints
-    bp_args = { 'source' => DAP::Type::Source.new(@c_filename), 'breakpoints' => [] }
+    bp_args = { 'breakpoints' => [] }
     @mruby_breakpoints.each do |filename, bps|
       bps.each do |bp|
         rbp = {}
+        rbp['name'] = @code_fetch_hook
         rbp['condition'] = "md_strcmp(filename,\"#{filename}\")==0 && line==#{bp['line']}"
-        rbp['line'] = @c_line
         bp_args['breakpoints'].push rbp
       end
     end
-    bp_args['breakpoints'].push({ 'line' => @c_line }) if @use_stepin_breakpoint
+    bp_args['breakpoints'].push({ 'name' => @code_fetch_hook }) if @use_stepin_breakpoint
     if @stepover_breakpoint > 0
 
       bp_args['breakpoints'].push({
-                                    'line' => @c_line,
+                                    'name' => @code_fetch_hook,
                                     'condition' => "mrb_gdb_get_callinfosize(mrb)<=#{@stepover_breakpoint}"
                                   })
     end
