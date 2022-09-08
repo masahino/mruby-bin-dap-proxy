@@ -98,7 +98,10 @@ class DapProxy
         var_list = parse_mruby_expr(res['body']['result'])
         var_list.each do |varname|
           v = mruby_variable(var_index, @last_stack['id'], varname)
-          vars.push v unless v.nil?
+          unless v.nil?
+            v['variablesReference'] = 0
+            vars.push v
+          end
         end
         response = { 'seq' => res['seq'], 'type' => 'response', 'request_seq' => message['seq'],
                      'success' => true, 'command' => 'variables', 'body' => { 'variables' => vars } }
