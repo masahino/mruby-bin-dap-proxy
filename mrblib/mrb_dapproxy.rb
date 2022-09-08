@@ -24,6 +24,7 @@ class DapProxy
       @client_in = $stdin
       @client_out = $stdout
       @readings.push @client_in
+      return
     end
 
     @client_in = nil
