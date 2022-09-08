@@ -1,0 +1,135 @@
+{
+	"name": "mruby-dap-proxy",
+	"displayName": "mruby Debug",
+	"version": "0.1.0",
+	"publisher": "masahino",
+	"repository": "https://github.com/masahino/mruby-bin-dap-proxy",
+	"description": "Debug adapter for mruby.",
+	"author": {
+		"name": "Masayuki Hino",
+		"email": "masahino@gmail.com"
+	},
+	"license": "MIT",
+	"keywords": [
+		"multi-root ready"
+	],
+	"engines": {
+		"vscode": "^1.18.0",
+		"node": "^7.9.0"
+	},
+	"categories": [
+		"Debuggers"
+	],
+	"private": true,
+	"devDependencies": {
+		"@types/node": "7.0.43",
+		"@types/mocha": "2.2.45",
+		"typescript": "2.6.2",
+		"mocha": "4.0.1",
+		"vscode": "1.1.10",
+		"vscode-debugadapter-testsupport": "1.25.0",
+		"tslint": "5.8.0",
+		"vsce": "^1.36.3"
+	},
+	"contributes": {
+		"breakpoints": [
+			{
+				"language": "c"
+			},
+			{
+				"language": "cpp"
+			},
+			{
+				"language": "ruby"
+			}
+		],
+		"debuggers": [
+			{
+				"type": "mruby-dap-proxy",
+				"label": "mruby Debugger",
+				"languages": [
+					"c",
+					"cpp",
+					"ruby"
+				],
+				"program": "./bin/mruby-dap-proxy",
+				"args": ["-l", "lldb-vscode"],
+				"windows": {
+					"program": "./bin/mruby-dap-proxy.exe"
+				},
+				"configurationAttributes": {
+					"launch": {
+						"required": [
+							"program"
+						],
+						"properties": {
+							"program": {
+								"type": "string",
+								"description": "Path to the program to debug."
+							},
+							"args": {
+								"type": [
+									"array",
+									"string"
+								],
+								"description": "Program arguments.",
+								"default": []
+							},
+							"env": {
+								"type": "object",
+								"description": "Additional environment variables to pass to the debugging (and debugged) process.",
+								"default": {}
+							},
+							"cwd": {
+								"type": "string",
+								"description": "Program working directory.",
+								"default": "${workspaceRoot}"
+							}
+						}
+					},
+					"attach": {
+						"properties": {
+							"program": {
+								"type": "string",
+								"description": "Path to the program to attach to."
+							},
+							"pid": {
+								"type": [
+									"number",
+									"string"
+								],
+								"description": "System process ID to attach to."
+							}
+						}
+					}
+				},
+				"initialConfigurations": [
+					{
+						"type": "mruby-dap-proxy",
+						"request": "launch",
+						"name": "mruby Debug",
+						"program": "${workspaceRoot}/<your program>",
+						"args": [],
+						"env": [],
+						"cwd": "${workspaceRoot}"
+					}
+				],
+				"configurationSnippets": [
+					{
+						"label": "mruby: Launch",
+						"description": "",
+						"body": {
+							"type": "mruby-dap-proxy",
+							"request": "launch",
+							"name": "${2:Launch}",
+							"program": "^\"\\${workspaceRoot}/${1:<your program>}\"",
+							"args": [],
+							"env": [],
+							"cwd": "^\"\\${workspaceRoot}\""
+						}
+					}
+				]
+			}
+		]
+	}
+}
