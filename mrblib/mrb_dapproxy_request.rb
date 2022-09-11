@@ -2,10 +2,9 @@ class DapProxy
   def mruby_step_in(message)
     return message unless stop_at_mruby_code?
 
-#    @mruby_code_fetch_bp.use_stepin_breakpoint = true
-#    @debugger.setFunctionBreakpoints(@mruby_code_fetch_bp.c_breakpoints) do |res|
+    #    @mruby_code_fetch_bp.use_stepin_breakpoint = true
+    #    @debugger.setFunctionBreakpoints(@mruby_code_fetch_bp.c_breakpoints) do |res|
     @debugger.evaluate({ 'expression' => '`tbreak mrb_debug_breakpoint_function' }) do |res|
-      $stderr.puts res
       return message if res['sucess'] == false
     end
     message['command'] = 'continue'
@@ -15,8 +14,13 @@ class DapProxy
   def mruby_next(message)
     return message unless stop_at_mruby_code?
 
-    @mruby_code_fetch_bp.stepover_breakpoint = @last_ciidx
+    @debugger.evaluate({ 'expression' => '`expr mrb_break(mrb)' }) do |res|
+$stderr.puts res
+      return message if res['sucess'] == false
+    end
+    @mruby_code_fetch_bp.use_next_breakpoint = true
     @debugger.setFunctionBreakpoints(@mruby_code_fetch_bp.c_breakpoints) do |res|
+$stderr.puts res
       return message if res['sucess'] == false
     end
     message['command'] = 'continue'
@@ -26,7 +30,10 @@ class DapProxy
   def mruby_step_out(message)
     return message unless stop_at_mruby_code?
 
-    @mruby_code_fetch_bp.stepover_breakpoint = @last_ciidx - 1
+    @debugger.evaluate({ 'expression' => '`expr mrb_break(mrb)' }) do |res|
+      return message if res['sucess'] == false
+    end
+    @mruby_code_fetch_bp.use_stepout_breakpoint = true
     @debugger.setFunctionBreakpoints(@mruby_code_fetch_bp.c_breakpoints) do |res|
       return message if res['sucess'] == false
     end

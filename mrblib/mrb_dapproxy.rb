@@ -79,7 +79,8 @@ class DapProxy
     return message if @mruby_code_fetch_bp.nil?
 
     @mruby_code_fetch_bp.use_stepin_breakpoint = false
-    @mruby_code_fetch_bp.stepover_breakpoint = 0
+    @mruby_code_fetch_bp.use_next_breakpoint = false
+    @mruby_code_fetch_bp.use_stepout_breakpoint = false
     @debugger.setFunctionBreakpoints(@mruby_code_fetch_bp.c_breakpoints) do |res|
     end
   end

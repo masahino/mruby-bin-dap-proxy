@@ -1,15 +1,16 @@
 class MrubyBreakpoint
-  attr_accessor :use_stepin_breakpoint, :stepover_breakpoint
+  attr_accessor :use_stepin_breakpoint, :use_next_breakpoint, :use_stepout_breakpoint
 
   def initialize(function_name)
     @code_fetch_hook = function_name
     @mruby_breakpoints = {}
     @use_stepin_breakpoint = false
-    @stepover_breakpoint = 0
+    @use_next_breakpoint = false
+    @use_stepout_breakpoint = false
   end
 
   def use_temporary_breakpoint
-    @use_stepin_breakpoint || @stepover_breakpoint > 0
+    @use_stepin_breakpoint || @use_next_breakpoint || @use_stepout_breakpoint
   end
 
   def c_breakpoints
@@ -23,11 +24,18 @@ class MrubyBreakpoint
       end
     end
     bp_args['breakpoints'].push({ 'name' => @code_fetch_hook }) if @use_stepin_breakpoint
-    if @stepover_breakpoint > 0
-
+    if @use_next_breakpoint
       bp_args['breakpoints'].push({
                                     'name' => @code_fetch_hook,
-                                    'condition' => "mrb_gdb_get_callinfosize(mrb)<=#{@stepover_breakpoint}"
+                                    'condition' => 'mrb_check_next(mrb) == 1'
+                                    # 'condition' => "ciidx<=#{@stepover_breakpoint}"
+                                  })
+    end
+    if @use_stepout_breakpoint
+      bp_args['breakpoints'].push({
+                                    'name' => @code_fetch_hook,
+                                    'condition' => 'mrb_check_stepout(mrb) == 1'
+                                    # 'condition' => "ciidx<=#{@stepover_breakpoint}"
                                   })
     end
     bp_args
