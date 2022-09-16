@@ -2,15 +2,28 @@ class DapProxy
   MRUBY_CODE_FETCH_FUNC = 'mrb_debug_breakpoint_function'.freeze
   MRUBY_VARIABLE_TYPE = %w[local global instance].freeze
 
-  def initialize(adapter = 'lldb-vscode', port = nil)
-    @debugger = DAP::Client.new(adapter, {})
+  DEFAULT_CONFIG = {
+    adapter: 'lldb-vscode',
+    port: nil,
+    mrb_debug_path: nil,
+    mrb_debug_line: nil
+  }
+
+  def initialize(config = DEFAULT_CONFIG)
+    @debugger = DAP::Client.new(config[:adapter], {})
     #    @client = DAP::Client.new("#{ENV['HOME']}/.vscode/extensions/vadimcn.vscode-lldb-1.7.4/adapter/codelldb",
     #        { 'args' => ['--port 4711'], 'port' => 4711 })
     @debugger.exec_debug_adapter
     @readings = [@debugger.io]
-    setup_client_io(port)
+    setup_client_io(config[:port])
     @mruby_code_fetch_source = nil
+    unless config[:mrb_debug_path].nil?
+      @mruby_code_fetch_source = DAP::Type::Source.new(config[:mrb_debug_path])
+    end
     @mruby_code_fetch_line = 0
+    unless config[:mrb_debug_line].nil?
+      @mruby_code_fetch_line = confg[:mrb_debug_line]
+    end
     @mruby_code_fetch_bp = nil
     @last_filename = ''
     @last_line = ''
@@ -42,8 +55,8 @@ class DapProxy
 
     @mruby_code_fetch_bp.clear_breakpoints(mrb_filename)
     @mruby_code_fetch_bp.set_breakpoints(mrb_filename, message['arguments']['breakpoints'])
-    message['command'] = 'setFunctionBreakpoints'
-    message['arguments'] = @mruby_code_fetch_bp.c_breakpoints
+    #    message['command'] = 'setFunctionBreakpoints'
+    message['arguments'] = @mruby_code_fetch_bp.c_breakpoints_line
     message
   end
 
@@ -62,17 +75,17 @@ class DapProxy
   end
 
   def prepare_mruby_breakpoint
-    @mruby_code_fetch_bp = MrubyBreakpoint.new(MRUBY_CODE_FETCH_FUNC)
-#    bp = DAP::Type::FunctionBreakpoint.new(MRUBY_CODE_FETCH_FUNC)
-#    @client.setFunctionBreakpoints({ 'breakpoints' => [bp] }) do |res|
-#      if res['success'] && !res['body']['breakpoints'][0]['source'].nil?
-#        @mruby_code_fetch_source = res['body']['breakpoints'][0]['source']
-#        @mruby_code_fetch_line = res['body']['breakpoints'][0]['line'].to_i + 20 # 8
-#        @mruby_code_fetch_bp = MrubyBreakpoint.new(@mruby_code_fetch_source['path'], @mruby_code_fetch_line)
-#      end
-#    end
-#    @client.setFunctionBreakpoints({ 'breakpoints' => [] }) do |res|
-#    end
+    # @mruby_code_fetch_bp = MrubyBreakpoint.new(MRUBY_CODE_FETCH_FUNC)
+    bp = DAP::Type::FunctionBreakpoint.new(MRUBY_CODE_FETCH_FUNC)
+    @debugger.setFunctionBreakpoints({ 'breakpoints' => [bp] }) do |res|
+      if res['success'] && !res['body']['breakpoints'][0]['source'].nil?
+        @mruby_code_fetch_source = res['body']['breakpoints'][0]['source']
+        @mruby_code_fetch_line = res['body']['breakpoints'][0]['line'].to_i
+        @mruby_code_fetch_bp = MrubyBreakpoint.new(@mruby_code_fetch_source['path'], @mruby_code_fetch_line, MRUBY_CODE_FETCH_FUNC)
+      end
+    end
+    @debugger.setFunctionBreakpoints({ 'breakpoints' => [] }) do |res|
+    end
   end
 
   def delete_temporary_breakpoint
@@ -81,7 +94,7 @@ class DapProxy
     @mruby_code_fetch_bp.use_stepin_breakpoint = false
     @mruby_code_fetch_bp.use_next_breakpoint = false
     @mruby_code_fetch_bp.use_stepout_breakpoint = false
-    @debugger.setFunctionBreakpoints(@mruby_code_fetch_bp.c_breakpoints) do |res|
+    @debugger.setBreakpoints(@mruby_code_fetch_bp.c_breakpoints_line) do |res|
     end
   end
 
@@ -217,15 +230,18 @@ class DapProxy
 end
 
 def __main__(argv)
-  lldb_vscode_path = 'lldb-vscode'
-  port = nil
+  config = DapProxy::DEFAULT_CONFIG
   argv.each_with_index do |arg, i|
     case arg
     when '-l', '--lldb_vscode_path'
-      lldb_vscode_path = argv[i + 1] unless argv[i + 1].nil?
+      config[:adapter] = argv[i + 1] unless argv[i + 1].nil?
     when '-p', '--port'
-      port = argv[i + 1].to_i unless argv[i + 1].nil?
+      config[:port] = argv[i + 1].to_i unless argv[i + 1].nil?
+    when '--mrb_debug_path'
+      config[:mrb_debug_path] = argv[i + 1].to_i unless argv[i + 1].nil?
+    when '--mrb_debug_line'
+      config[:mrb_debug_line] = argv[i + 1].to_i unless argv[i + 1].nil?
     end
   end
-  DapProxy.new(lldb_vscode_path, port).run
+  DapProxy.new(config).run
 end

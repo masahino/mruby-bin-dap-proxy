@@ -2,7 +2,7 @@
 ## DapProxy Test
 ##
 class DapProxy
-  attr_accessor :request_buffer, :mruby_code_fetch_source
+  attr_accessor :request_buffer, :mruby_code_fetch_source, :mruby_code_fetch_line
 end
 
 module DAP
@@ -29,8 +29,13 @@ module DAP
   end
 end
 
+assert('initialize') do
+  proxy = DapProxy.new
+  assert_equal 0, proxy.mruby_code_fetch_line
+end
+
 assert('restore_response') do
-  proxy = DapProxy.new('')
+  proxy = DapProxy.new({ adapter: '' })
   proxy.request_buffer = [{ 'seq' => 1, 'command' => 'next' }, { 'seq' => 3, 'command' => 'stepIn' },
                           { 'command' => 'next', 'arguments' => { 'threadId' => 38 },
                             'type' => 'request', 'seq' => 152 }]
@@ -41,8 +46,7 @@ assert('restore_response') do
 end
 
 assert('add_mruby_stack levels == 1') do
-  proxy = DapProxy.new('')
-  proxy.prepare_mruby_breakpoint
+  proxy = DapProxy.new({ adapter: '' })
   proxy.request_buffer = [{ 'seq' => 1, 'command' => 'next' }, { 'seq' => 3, 'command' => 'stepIn' },
                           { 'command' => 'next', 'arguments' => { 'threadId' => 38 },
                             'type' => 'request', 'seq' => 152 },

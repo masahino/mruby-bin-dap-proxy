@@ -15,12 +15,10 @@ class DapProxy
     return message unless stop_at_mruby_code?
 
     @debugger.evaluate({ 'expression' => '`expr mrb_break(mrb)' }) do |res|
-$stderr.puts res
       return message if res['sucess'] == false
     end
     @mruby_code_fetch_bp.use_next_breakpoint = true
-    @debugger.setFunctionBreakpoints(@mruby_code_fetch_bp.c_breakpoints) do |res|
-$stderr.puts res
+    @debugger.setBreakpoints(@mruby_code_fetch_bp.c_breakpoints_line) do |res|
       return message if res['sucess'] == false
     end
     message['command'] = 'continue'
@@ -34,7 +32,7 @@ $stderr.puts res
       return message if res['sucess'] == false
     end
     @mruby_code_fetch_bp.use_stepout_breakpoint = true
-    @debugger.setFunctionBreakpoints(@mruby_code_fetch_bp.c_breakpoints) do |res|
+    @debugger.setBreakpoints(@mruby_code_fetch_bp.c_breakpoints_line) do |res|
       return message if res['sucess'] == false
     end
     message['command'] = 'continue'
@@ -70,12 +68,14 @@ $stderr.puts res
       @debugger.evaluate({ 'expression' => mruby_variables_expr(i), 'frameId' => @last_stack['id'] }) do |res|
         if res['success']
           variables = parse_mruby_expr(res['body']['result'])
-          scope_body['scopes'].push({ 'name' => "#{MRUBY_VARIABLE_TYPE[i]} variables",
-                                      'presentationHint' => "#{MRUBY_VARIABLE_TYPE[i]}s",
-                                      'namedVariables' => variables.size,
-                                      'indexedVariables' => 0,
-                                      'expensive' => false,
-                                      'variablesReference' => i + 1 })
+          unless variables.nil?
+            scope_body['scopes'].push({ 'name' => "#{MRUBY_VARIABLE_TYPE[i]} variables",
+                                        'presentationHint' => "#{MRUBY_VARIABLE_TYPE[i]}s",
+                                        'namedVariables' => variables.size,
+                                        'indexedVariables' => 0,
+                                        'expensive' => false,
+                                        'variablesReference' => i + 1 })
+          end
           seq = res['seq']
         end
       end
@@ -122,7 +122,7 @@ $stderr.puts res
   def mruby_set_function_breakpoints(message)
     return message if @mruby_code_fetch_bp.nil?
 
-    message['arguments']['breakpoints'].concat(@mruby_code_fetch_bp.c_breakpoints['breakpoints'])
+    # message['arguments']['breakpoints'].concat(@mruby_code_fetch_bp.c_breakpoints['breakpoints'])
     message
   end
 end

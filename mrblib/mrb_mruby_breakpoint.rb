@@ -1,7 +1,9 @@
 class MrubyBreakpoint
   attr_accessor :use_stepin_breakpoint, :use_next_breakpoint, :use_stepout_breakpoint
 
-  def initialize(function_name)
+  def initialize(filename, line, function_name)
+    @c_filename = filename
+    @c_line = line
     @code_fetch_hook = function_name
     @mruby_breakpoints = {}
     @use_stepin_breakpoint = false
@@ -13,7 +15,34 @@ class MrubyBreakpoint
     @use_stepin_breakpoint || @use_next_breakpoint || @use_stepout_breakpoint
   end
 
-  def c_breakpoints
+  def c_breakpoints_line
+    bp_args = { 'source' => DAP::Type::Source.new(@c_filename), 'breakpoints' => [] }
+    @mruby_breakpoints.each do |filename, bps|
+      bps.each_with_index do |bp, i|
+        rbp = {}
+        rbp['line'] = @c_line + 3 + i
+        rbp['condition'] = "md_strcmp(filename,\"#{filename}\")==0 && line==#{bp['line']}"
+        bp_args['breakpoints'].push rbp
+      end
+    end
+    if @use_next_breakpoint
+      bp_args['breakpoints'].push({
+                                    'line' => @c_line + 1,
+                                    'condition' => 'mrb_check_next(mrb) == 1'
+                                    # 'condition' => "ciidx<=#{@stepover_breakpoint}"
+                                  })
+    end
+    if @use_stepout_breakpoint
+      bp_args['breakpoints'].push({
+                                    'line' => @c_line + 2,
+                                    'condition' => 'mrb_check_stepout(mrb) == 1'
+                                    # 'condition' => "ciidx<=#{@stepover_breakpoint}"
+                                  })
+    end
+    bp_args
+  end
+
+  def c_breakpoints_name
     bp_args = { 'breakpoints' => [] }
     @mruby_breakpoints.each do |filename, bps|
       bps.each do |bp|
