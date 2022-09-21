@@ -1,35 +1,74 @@
+# DAP proxy
 class DapProxy
   MRUBY_CODE_FETCH_FUNC = 'mrb_debug_breakpoint_function'.freeze
   MRUBY_VARIABLE_TYPE = %w[local global instance].freeze
 
   DEFAULT_CONFIG = {
     adapter: 'lldb-vscode',
-    port: nil,
+    adapter_type: 'lldb-vscode',
+    adapter_port: nil,
+    client_port: nil,
     mrb_debug_path: nil,
     mrb_debug_line: nil
-  }
+  }.freeze
+  DEFAULT_DEBUGGER_CONFIG = {
+    variable_references: 2, # variableReferences for global variables
+    condition_prefix: '',
+    expression_prefix: '`'
+  }.freeze
 
   def initialize(config = DEFAULT_CONFIG)
-    @debugger = DAP::Client.new(config[:adapter], {})
-    #    @client = DAP::Client.new("#{ENV['HOME']}/.vscode/extensions/vadimcn.vscode-lldb-1.7.4/adapter/codelldb",
-    #        { 'args' => ['--port 4711'], 'port' => 4711 })
-    @debugger.exec_debug_adapter
+    setup_logfile(config)
+    setup_debugger(config)
     @readings = [@debugger.io]
     setup_client_io(config[:port])
-    @mruby_code_fetch_source = nil
-    unless config[:mrb_debug_path].nil?
-      @mruby_code_fetch_source = DAP::Type::Source.new(config[:mrb_debug_path])
-    end
-    @mruby_code_fetch_line = 0
-    unless config[:mrb_debug_line].nil?
-      @mruby_code_fetch_line = confg[:mrb_debug_line]
-    end
-    @mruby_code_fetch_bp = nil
+    setup_mruby_breakpoint(config)
     @last_filename = ''
     @last_line = ''
     @last_ciidx = 999
     @last_stack = nil
     @request_buffer = []
+  end
+
+  def setup_mruby_breakpoint(config)
+    @mruby_code_fetch_source = nil
+    unless config[:mrb_debug_path].nil?
+      @mruby_code_fetch_source = DAP::Type::Source.new(config[:mrb_debug_path]).to_h
+    end
+    @mruby_code_fetch_line = 0
+    unless config[:mrb_debug_line].nil?
+      @mruby_code_fetch_line = config[:mrb_debug_line]
+    end
+    @mruby_code_fetch_bp = nil
+    if !@mruby_code_fetch_source.nil? && !@mruby_code_fetch_line.nil?
+      @mruby_code_fetch_bp = MrubyBreakpoint.new(@mruby_code_fetch_source['path'],
+                                                 @mruby_code_fetch_line,
+                                                 MRUBY_CODE_FETCH_FUNC,
+                                                 @debugger_config[:condition_prefix])
+    end
+  end
+
+  def setup_logfile(config)
+    @logger = $stderr
+    unless config[:logfile].nil?
+      @logger = File.open(config[:logfile], 'w')
+    end
+    @logger.puts config
+  end
+
+  def setup_debugger(config)
+    adapter_args = {}
+    unless config[:adapter_port].nil?
+      adapter_args = { 'args' => ["--port #{config[:adapter_port]}"], 'port' => config[:adapter_port] }
+    end
+    @debugger = DAP::Client.new(config[:adapter], adapter_args)
+    @debugger.exec_debug_adapter
+    @debugger_config = DEFAULT_DEBUGGER_CONFIG
+    if config[:adapter_type] == 'lldb'
+      @debugger_config[:variable_references] = 1003
+      @debugger_config[:condition_prefix] = '/nat '
+      @debugger_config[:expression_prefix] = ''
+    end
   end
 
   def setup_client_io(port)
@@ -78,10 +117,12 @@ class DapProxy
     # @mruby_code_fetch_bp = MrubyBreakpoint.new(MRUBY_CODE_FETCH_FUNC)
     bp = DAP::Type::FunctionBreakpoint.new(MRUBY_CODE_FETCH_FUNC)
     @debugger.setFunctionBreakpoints({ 'breakpoints' => [bp] }) do |res|
+      @logger.puts res
       if res['success'] && !res['body']['breakpoints'][0]['source'].nil?
         @mruby_code_fetch_source = res['body']['breakpoints'][0]['source']
         @mruby_code_fetch_line = res['body']['breakpoints'][0]['line'].to_i
-        @mruby_code_fetch_bp = MrubyBreakpoint.new(@mruby_code_fetch_source['path'], @mruby_code_fetch_line, MRUBY_CODE_FETCH_FUNC)
+        @mruby_code_fetch_bp = MrubyBreakpoint.new(@mruby_code_fetch_source['path'],
+                                                   @mruby_code_fetch_line, MRUBY_CODE_FETCH_FUNC)
       end
     end
     @debugger.setFunctionBreakpoints({ 'breakpoints' => [] }) do |res|
@@ -109,9 +150,15 @@ class DapProxy
     headers, message = recv_message(@client_in)
     return if headers == {}
 
+    @logger.puts '---------->'
+    @logger.puts message
     if message['type'] == 'request'
       @request_buffer.push message.dup
       case message['command']
+        # when 'initialize'
+        # message['arguments']['adapterID'] = 'lldb'
+        # when 'attach'
+        # message['arguments']['type'] = 'lldb'
       when 'setBreakpoints'
         message = breakpoints_r2c(message)
       when 'setFunctionBreakpoints'
@@ -130,6 +177,8 @@ class DapProxy
         return if message.nil?
       end
     end
+    @logger.puts "\t==========>"
+    @logger.puts message
     @debugger.send_message(message)
   end
 
@@ -148,9 +197,11 @@ class DapProxy
 
     mrb_stack = { 'column' => 1, 'id' => @last_stack['id'] - 1, 'name' => MRUBY_CODE_FETCH_FUNC }
     @debugger.scopes({ 'frameId' => frame_id }) do |res|
+      @logger.puts res
       return message if res['success'] == false
     end
-    @debugger.variables({ 'variablesReference' => 2 }) do |res|
+    @debugger.variables({ 'variablesReference' => @debugger_config[:variable_references] }) do |res|
+      @logger.puts res
       if res['success']
         res['body']['variables'].each do |var|
           if var['name'] == 'filename'
@@ -159,6 +210,10 @@ class DapProxy
           mrb_stack['line'] = var['value'].to_i if var['name'] == 'line'
           @last_ciidx = var['value'].to_i if var['name'] == 'ciidx'
         end
+        if mrb_stack['source'].nil? || mrb_stack['line'].nil?
+          return message
+        end
+
         @last_stack = mrb_stack
         message['body']['totalFrames'] += 1
         if levels == 1
@@ -180,6 +235,8 @@ class DapProxy
 
   def process_adapter
     message = @debugger.wait_message
+    @logger.puts "\t<----------"
+    @logger.puts message
     if message['type'] == 'event'
       case message['event']
       when 'stopped'
@@ -201,6 +258,8 @@ class DapProxy
       end
     end
     @request_buffer.delete_if { |request| request['seq'] == message['request_seq'] }
+    @logger.puts '<=========='
+    @logger.puts message
     send_message(@client_out, message)
   end
 
@@ -214,7 +273,7 @@ class DapProxy
       readable, _writable = IO.select(@readings)
       readable.each do |ri|
         if ri == @acceptor
-          $stderr.puts 'accept'
+          @logger.puts 'accept'
           @client_in = @acceptor.accept
           @client_out = @client_in
           @readings.push @client_in
@@ -235,12 +294,18 @@ def __main__(argv)
     case arg
     when '-l', '--lldb_vscode_path'
       config[:adapter] = argv[i + 1] unless argv[i + 1].nil?
+    when '--adapter_port'
+      config[:adapter_port] = argv[i + 1] unless argv[i + 1].nil?
+    when '--adapter_type'
+      config[:adapter_type] = argv[i + 1] unless argv[i + 1].nil?
     when '-p', '--port'
-      config[:port] = argv[i + 1].to_i unless argv[i + 1].nil?
+      config[:client_port] = argv[i + 1].to_i unless argv[i + 1].nil?
     when '--mrb_debug_path'
-      config[:mrb_debug_path] = argv[i + 1].to_i unless argv[i + 1].nil?
+      config[:mrb_debug_path] = argv[i + 1] unless argv[i + 1].nil?
     when '--mrb_debug_line'
       config[:mrb_debug_line] = argv[i + 1].to_i unless argv[i + 1].nil?
+    when '--logfile'
+      config[:logfile] = argv[i + 1] unless argv[i + 1].nil?
     end
   end
   DapProxy.new(config).run

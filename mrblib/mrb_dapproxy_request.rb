@@ -1,10 +1,13 @@
+# DAP Proxy
 class DapProxy
   def mruby_step_in(message)
     return message unless stop_at_mruby_code?
 
     #    @mruby_code_fetch_bp.use_stepin_breakpoint = true
     #    @debugger.setFunctionBreakpoints(@mruby_code_fetch_bp.c_breakpoints) do |res|
-    @debugger.evaluate({ 'expression' => '`tbreak mrb_debug_breakpoint_function' }) do |res|
+    @debugger.evaluate({ 'expression' => "#{@debugger_config[:expression_prefix]}tbreak mrb_debug_breakpoint_function",
+                         'context' => 'repl' }) do |res|
+      @logger.puts res
       return message if res['sucess'] == false
     end
     message['command'] = 'continue'
@@ -14,7 +17,10 @@ class DapProxy
   def mruby_next(message)
     return message unless stop_at_mruby_code?
 
-    @debugger.evaluate({ 'expression' => '`expr mrb_break(mrb)' }) do |res|
+    @logger.puts "framdid = #{@frame_id}"
+    @debugger.evaluate({ 'expression' => "#{@debugger_config[:expression_prefix]}expr mrb_break(mrb)",
+                         'context' => 'repl', 'frameId' => @last_stack['id'] + 1 }) do |res|
+      @logger.puts res
       return message if res['sucess'] == false
     end
     @mruby_code_fetch_bp.use_next_breakpoint = true
@@ -28,7 +34,8 @@ class DapProxy
   def mruby_step_out(message)
     return message unless stop_at_mruby_code?
 
-    @debugger.evaluate({ 'expression' => '`expr mrb_break(mrb)' }) do |res|
+    @debugger.evaluate({ 'expression' => "#{@debugger_config[:expression_prefix]}expr mrb_break(mrb)",
+                         'context' => 'repl', 'frameId' => @last_stack['id'] + 1 }) do |res|
       return message if res['sucess'] == false
     end
     @mruby_code_fetch_bp.use_stepout_breakpoint = true
@@ -41,8 +48,8 @@ class DapProxy
 
   def parse_mruby_expr(result_str)
     vars = nil
-#    line.scan(/\{name=\\?"(.+?)\\?",value=\\?"(.+?)\\?",type=\\?"(.+?)\\?"\}/) do |match|
-#    result_str.scan(/^\(const char \*\) \$\d+ = "([])"$/) do |match|
+    #    line.scan(/\{name=\\?"(.+?)\\?",value=\\?"(.+?)\\?",type=\\?"(.+?)\\?"\}/) do |match|
+    #    result_str.scan(/^\(const char \*\) \$\d+ = "([])"$/) do |match|
     result_str.scan(/^\(const char \*\) \$\d+ = "(.*)"$/) do |match|
       vars = instance_eval(match[0])
     end
@@ -50,11 +57,11 @@ class DapProxy
   end
 
   def mruby_variables_expr(index)
-    "`expr -R -f s -- mrb_debug_get_#{MRUBY_VARIABLE_TYPE[index]}_variables(mrb)"
+    "#{@debugger_config[:expression_prefix]}expr -R -f s -- mrb_debug_get_#{MRUBY_VARIABLE_TYPE[index]}_variables(mrb)"
   end
 
   def mruby_variable_expr(index, varname)
-    "`expr -R -f s -- mrb_debug_get_#{MRUBY_VARIABLE_TYPE[index]}_variable(mrb, \"#{varname}\")"
+    "#{@debugger_config[:expression_prefix]}expr -R -f s -- mrb_debug_get_#{MRUBY_VARIABLE_TYPE[index]}_variable(mrb, \"#{varname}\")"
   end
 
   def mruby_scopes(message)
@@ -87,7 +94,8 @@ class DapProxy
   end
 
   def mruby_variable(var_index, frame_id, varname)
-    @debugger.evaluate({ 'expression' => mruby_variable_expr(var_index, varname), 'frameId' => frame_id }) do |res|
+    @debugger.evaluate({ 'expression' => mruby_variable_expr(var_index, varname),
+                         'frameId' => frame_id }) do |res|
       if res['success']
         return parse_mruby_expr(res['body']['result'])
       end
@@ -99,7 +107,8 @@ class DapProxy
     return message unless stop_at_mruby_code?
 
     var_index = message['arguments']['variablesReference'] - 1
-    @debugger.evaluate({ 'expression' => mruby_variables_expr(var_index), 'frameId' => @last_stack['id'] }) do |res|
+    @debugger.evaluate({ 'expression' => mruby_variables_expr(var_index),
+                         'frameId' => @last_stack['id'] }) do |res|
       if res['success']
         vars = []
         var_list = parse_mruby_expr(res['body']['result'])
