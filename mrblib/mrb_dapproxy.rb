@@ -9,13 +9,14 @@ class DapProxy
     adapter_port: nil,
     client_port: nil,
     mrb_debug_path: nil,
-    mrb_debug_line: nil
-  }.freeze
+    mrb_debug_line: nil,
+    logilfe: nil
+  }
   DEFAULT_DEBUGGER_CONFIG = {
     variable_references: 2, # variableReferences for global variables
     condition_prefix: '',
     expression_prefix: '`'
-  }.freeze
+  }
 
   def initialize(config = DEFAULT_CONFIG)
     setup_logfile(config)
@@ -155,10 +156,6 @@ class DapProxy
     if message['type'] == 'request'
       @request_buffer.push message.dup
       case message['command']
-        # when 'initialize'
-        # message['arguments']['adapterID'] = 'lldb'
-        # when 'attach'
-        # message['arguments']['type'] = 'lldb'
       when 'setBreakpoints'
         message = breakpoints_r2c(message)
       when 'setFunctionBreakpoints'
