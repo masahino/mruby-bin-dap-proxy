@@ -23,7 +23,8 @@ class MrubyBreakpoint
       bps.each_with_index do |bp, i|
         rbp = {}
         rbp['line'] = @c_line + 3 + i
-        rbp['condition'] = "#{@condition_prefix}md_strcmp(filename,\"#{filename}\")==0 && line==#{bp['line']}"
+        # rbp['condition'] = "#{@condition_prefix}md_strcmp(filename,\"#{filename}\")==0 && line==#{bp['line']}"
+        rbp['condition'] = "#{@condition_prefix}line==#{bp['line']} && (int)strcmp(filename,\"#{filename}\")==0"
         bp_args['breakpoints'].push rbp
       end
     end
@@ -50,7 +51,8 @@ class MrubyBreakpoint
       bps.each do |bp|
         rbp = {}
         rbp['name'] = @code_fetch_hook
-        rbp['condition'] = "#{@condition_prefix}md_strcmp(filename,\"#{filename}\")==0 && line==#{bp['line']}"
+        # rbp['condition'] = "#{@condition_prefix}md_strcmp(filename,\"#{filename}\")==0 && line==#{bp['line']}"
+        rbp['condition'] = "#{@condition_prefix}line==#{bp['line']} && (int)strcmp(filename,\"#{filename}\")==0"
         bp_args['breakpoints'].push rbp
       end
     end
