@@ -8,7 +8,7 @@ class DapProxy
     @debugger.evaluate({ 'expression' => "#{@debugger_config[:expression_prefix]}tbreak mrb_debug_breakpoint_function",
                          'context' => 'repl' }) do |res|
       @logger.puts res
-      return message if res['sucess'] == false
+      return message if res['success'] == false
     end
     message['command'] = 'continue'
     message
@@ -21,11 +21,11 @@ class DapProxy
     @debugger.evaluate({ 'expression' => "#{@debugger_config[:expression_prefix]}expr mrb_break(mrb)",
                          'context' => 'repl', 'frameId' => @last_stack['id'] + 1 }) do |res|
       @logger.puts res
-      return message if res['sucess'] == false
+      return message if res['success'] == false
     end
     @mruby_code_fetch_bp.use_next_breakpoint = true
     @debugger.setBreakpoints(@mruby_code_fetch_bp.c_breakpoints_line) do |res|
-      return message if res['sucess'] == false
+      return message if res['success'] == false
     end
     message['command'] = 'continue'
     message
@@ -36,11 +36,11 @@ class DapProxy
 
     @debugger.evaluate({ 'expression' => "#{@debugger_config[:expression_prefix]}expr mrb_break(mrb)",
                          'context' => 'repl', 'frameId' => @last_stack['id'] + 1 }) do |res|
-      return message if res['sucess'] == false
+      return message if res['success'] == false
     end
     @mruby_code_fetch_bp.use_stepout_breakpoint = true
     @debugger.setBreakpoints(@mruby_code_fetch_bp.c_breakpoints_line) do |res|
-      return message if res['sucess'] == false
+      return message if res['success'] == false
     end
     message['command'] = 'continue'
     message
