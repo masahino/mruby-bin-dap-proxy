@@ -3,7 +3,7 @@ class DapProxy
 end
 
 assert('parse_mruby_expr') do
-  proxy = DapProxy.new({ adapter: '' })
+  proxy = build_mock_dap_proxy
   local_variables = '(const char *) $0 = "["e", "current_pos", "x", "y", "readable", "_writable"]"'
   global_variables = '(const char *) $1 = "["$\'", "$stderr", "$:", "$\"", "$stdout", "$PROCESS_ID", "$&", "$`", "$1", "$PID", "$$", "$?", "$PROGRAM_NAME", "$mode_list", "$+", "$~", "$0", "$stdin", "$CHILD_STATUS"]"'
   locals = proxy.parse_mruby_expr(local_variables)
@@ -15,7 +15,7 @@ assert('parse_mruby_expr') do
 end
 
 assert('mruby_set_function_breakpoints') do
-  proxy = DapProxy.new({ adapter: '' })
+  proxy = build_mock_dap_proxy
   message = { 'command' => 'setFunctionBreakpoints',
               'arguments' => { 'breakpoints' => [] }, 'type' => 'request', 'seq' => 5 }
   ret = proxy.mruby_set_function_breakpoints(message)

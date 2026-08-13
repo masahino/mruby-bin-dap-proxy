@@ -5,37 +5,13 @@ class DapProxy
   attr_accessor :request_buffer, :mruby_code_fetch_source, :mruby_code_fetch_line
 end
 
-module DAP
-  class Client
-    def variables(_args, &block)
-      res = { 'seq' => 0, 'type' => 'response', 'request_seq' => 12, 'success' => true, 'command' => 'variables',
-        'body' => { 'variables' => [{ 'name' => 'filename', 'value' => '"/foo/bar/baz"', 'type' => 'Strings', 'variablesReference' => 0 }, { 'name' => 'line', 'value' => '11', 'type' => 'Integer', 'variablesReference' => 1 },
-            { 'name' => 'prev_ciidx', 'value' => '10', 'type' => 'Integer', 'variablesReference' => 2 } ] } }
-      if block_given?
-        block.call(res)
-      else
-        res
-      end
-    end
-
-    def scopes(_args, &block)
-      res = { 'seq' => 0, 'type' => 'response', 'request_seq' => 12, 'success' => true, 'command' => 'scopes' }
-      if block_given?
-        block.call(res)
-      else
-        res
-      end
-    end
-  end
-end
-
 assert('initialize') do
-  proxy = DapProxy.new
+  proxy = build_mock_dap_proxy
   assert_equal 0, proxy.mruby_code_fetch_line
 end
 
 assert('restore_response') do
-  proxy = DapProxy.new({ adapter: '' })
+  proxy = build_mock_dap_proxy
   proxy.request_buffer = [{ 'seq' => 1, 'command' => 'next' }, { 'seq' => 3, 'command' => 'stepIn' },
                           { 'command' => 'next', 'arguments' => { 'threadId' => 38 },
                             'type' => 'request', 'seq' => 152 }]
@@ -46,7 +22,7 @@ assert('restore_response') do
 end
 
 assert('add_mruby_stack levels == 1') do
-  proxy = DapProxy.new({ adapter: '' })
+  proxy = build_mock_dap_proxy
   proxy.request_buffer = [{ 'seq' => 1, 'command' => 'next' }, { 'seq' => 3, 'command' => 'stepIn' },
                           { 'command' => 'next', 'arguments' => { 'threadId' => 38 },
                             'type' => 'request', 'seq' => 152 },

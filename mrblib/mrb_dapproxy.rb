@@ -100,6 +100,21 @@ class DapProxy
     message
   end
 
+  def launch_r2c(message)
+    arguments = message['arguments']
+    program_args = arguments['args']
+    return message if program_args.nil?
+
+    cwd = arguments['cwd']
+    cwd = File.expand_path('.') if cwd.nil? || cwd.empty?
+    program_args.each_with_index do |arg, index|
+      next unless File.extname(arg) == '.rb'
+
+      program_args[index] = File.expand_path(arg, cwd)
+    end
+    message
+  end
+
   def breakpoints_c2r(message)
     @request_buffer.select { |req| req['seq'] == message['request_seq'] }.each do |org_req|
       org_source = org_req['arguments']['source']
@@ -156,6 +171,8 @@ class DapProxy
     if message['type'] == 'request'
       @request_buffer.push message.dup
       case message['command']
+      when 'launch'
+        message = launch_r2c(message)
       when 'setBreakpoints'
         message = breakpoints_r2c(message)
       when 'setFunctionBreakpoints'
@@ -192,7 +209,7 @@ class DapProxy
     frame_id = @last_stack['id'].to_i
     return message if @last_stack['name'] != MRUBY_CODE_FETCH_FUNC
 
-    mrb_stack = { 'column' => 1, 'id' => @last_stack['id'] - 1, 'name' => MRUBY_CODE_FETCH_FUNC }
+    mrb_stack = { 'column' => 1, 'id' => @last_stack['id'] - 1, 'name' => '[mruby]'}#MRUBY_CODE_FETCH_FUNC }
     @debugger.scopes({ 'frameId' => frame_id }) do |res|
       @logger.puts res
       return message if res['success'] == false
@@ -285,25 +302,55 @@ class DapProxy
   end
 end
 
+def show_help
+  puts "Usage: #{$PROGRAM_NAME} [options]"
+  puts '    -l, --lldb_vscode_path PATH'
+  puts '    --adapter_port PORT'
+  puts '    -p, --port PORT'
+  puts '    --mrb_debug_path PATH'
+  puts '    --mrb_debug_line LINE'
+  puts '    --logfile FILE'
+  puts '    -i'
+  puts '    --help'
+end
+
 def __main__(argv)
-  config = DapProxy::DEFAULT_CONFIG
-  argv.each_with_index do |arg, i|
-    case arg
+  config = DapProxy::DEFAULT_CONFIG.dup
+  i = 0
+  while i < argv.length
+    case argv[i]
     when '-l', '--lldb_vscode_path'
-      config[:adapter] = argv[i + 1] unless argv[i + 1].nil?
+      i += 1
+      config[:adapter] = argv[i] unless argv[i].nil?
     when '--adapter_port'
-      config[:adapter_port] = argv[i + 1] unless argv[i + 1].nil?
+      i += 1
+      config[:adapter_port] = argv[i] unless argv[i].nil?
     when '--adapter_type'
-      config[:adapter_type] = argv[i + 1] unless argv[i + 1].nil?
+      i += 1
+      config[:adapter_type] = argv[i] unless argv[i].nil?
     when '-p', '--port'
-      config[:client_port] = argv[i + 1].to_i unless argv[i + 1].nil?
+      i += 1
+      config[:client_port] = argv[i].to_i unless argv[i].nil?
     when '--mrb_debug_path'
-      config[:mrb_debug_path] = argv[i + 1] unless argv[i + 1].nil?
+      i += 1
+      config[:mrb_debug_path] = argv[i] unless argv[i].nil?
     when '--mrb_debug_line'
-      config[:mrb_debug_line] = argv[i + 1].to_i unless argv[i + 1].nil?
+      i += 1
+      config[:mrb_debug_line] = argv[i].to_i unless argv[i].nil?
     when '--logfile'
-      config[:logfile] = argv[i + 1] unless argv[i + 1].nil?
+      i += 1
+      config[:logfile] = argv[i] unless argv[i].nil?
+    when '-i'
+      DapShell.new(config).run
+    when '-h', '--help'
+      show_help
+      exit
+    else
+      warn "Unknown option: #{argv[i]}"
+      show_help
+      return
     end
+    i += 1
   end
   DapProxy.new(config).run
 end

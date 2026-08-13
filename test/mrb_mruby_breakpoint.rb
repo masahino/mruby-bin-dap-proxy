@@ -2,16 +2,16 @@ assert('add_breakpoint') do
   mrb_bp = MrubyBreakpoint.new('a', 1, 'mrb_debug_breakpoint_function')
   mrb_bp.add_breakpoint('foo.rb', { 'line' => 10 })
   assert_equal 1, mrb_bp.c_breakpoints_line['breakpoints'].size
-  assert_equal 'md_strcmp(filename,"foo.rb")==0 && line==10', mrb_bp.c_breakpoints_line['breakpoints'][0]['condition']
+  assert_equal 'line==10 && (int)strcmp(filename,"foo.rb")==0', mrb_bp.c_breakpoints_line['breakpoints'][0]['condition']
 
   mrb_bp.add_breakpoint('foo.rb', { 'line' => 20 })
   assert_equal 2, mrb_bp.c_breakpoints_line['breakpoints'].size
-  assert_equal 'md_strcmp(filename,"foo.rb")==0 && line==20',
+  assert_equal 'line==20 && (int)strcmp(filename,"foo.rb")==0',
                mrb_bp.c_breakpoints_line['breakpoints'][1]['condition']
 
   mrb_bp.add_breakpoint('bar.rb', { 'line' => 30 })
   assert_equal 3, mrb_bp.c_breakpoints_line['breakpoints'].size
-  assert_equal 'md_strcmp(filename,"bar.rb")==0 && line==30',
+  assert_equal 'line==30 && (int)strcmp(filename,"bar.rb")==0',
                mrb_bp.c_breakpoints_line['breakpoints'][2]['condition']
 end
 
