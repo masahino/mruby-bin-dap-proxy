@@ -15,7 +15,8 @@ class DapProxy
   DEFAULT_DEBUGGER_CONFIG = {
     variable_references: 2, # variableReferences for global variables
     condition_prefix: '',
-    expression_prefix: '`'
+    expression_prefix: '`',
+    watch_evaluate: true # evaluate mruby helpers by DAP evaluate (not the command interpreter)
   }
 
   def initialize(config = DEFAULT_CONFIG)
@@ -69,6 +70,7 @@ class DapProxy
       @debugger_config[:variable_references] = 1003
       @debugger_config[:condition_prefix] = '/nat '
       @debugger_config[:expression_prefix] = ''
+      @debugger_config[:watch_evaluate] = false
     end
   end
 
@@ -156,7 +158,7 @@ class DapProxy
   end
 
   def stop_at_mruby_code?
-    return false if @last_stack.nil?
+    return false if @last_stack.nil? || @last_stack['source'].nil?
     return true if File.extname(@last_stack['source']['path']) == '.rb'
 
     false
