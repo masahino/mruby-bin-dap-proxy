@@ -42,3 +42,59 @@ assert('add_mruby_stack levels == 1') do
   assert_equal '/foo/bar/baz', ret['body']['stackFrames'][0]['source']['path']
   assert_equal 12, ret['body']['totalFrames']
 end
+
+class PollingDAPClient
+  attr_accessor :message, :on_pending, :on_timeout
+
+  def poll_message
+    @message
+  end
+end
+
+assert('process_adapter does nothing while a message is still arriving') do
+  proxy = build_mock_dap_proxy
+  client = PollingDAPClient.new
+  proxy.instance_variable_set(:@debugger, client)
+  reader, writer = IO.pipe
+  proxy.instance_variable_set(:@client_out, writer)
+
+  proxy.process_adapter
+
+  assert_nil IO.select([reader], nil, nil, 0)
+ensure
+  reader.close unless reader.nil? || reader.closed?
+  writer.close unless writer.nil? || writer.closed?
+end
+
+assert('handle_adapter_message forwards an event to the client') do
+  proxy = build_mock_dap_proxy
+  proxy.instance_variable_set(:@debugger, PollingDAPClient.new)
+  reader, writer = IO.pipe
+  proxy.instance_variable_set(:@client_out, writer)
+  event = { 'seq' => 5, 'type' => 'event', 'event' => 'output', 'body' => { 'output' => 'hi' } }
+
+  proxy.handle_adapter_message(event)
+
+  _headers, forwarded = proxy.recv_message(reader)
+  assert_equal event, forwarded
+ensure
+  reader.close unless reader.nil? || reader.closed?
+  writer.close unless writer.nil? || writer.closed?
+end
+
+assert('process_adapter forwards the message that has arrived') do
+  proxy = build_mock_dap_proxy
+  client = PollingDAPClient.new
+  client.message = { 'seq' => 6, 'type' => 'event', 'event' => 'continued', 'body' => {} }
+  proxy.instance_variable_set(:@debugger, client)
+  reader, writer = IO.pipe
+  proxy.instance_variable_set(:@client_out, writer)
+
+  proxy.process_adapter
+
+  _headers, forwarded = proxy.recv_message(reader)
+  assert_equal 'continued', forwarded['event']
+ensure
+  reader.close unless reader.nil? || reader.closed?
+  writer.close unless writer.nil? || writer.closed?
+end

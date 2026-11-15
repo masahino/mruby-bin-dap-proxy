@@ -65,6 +65,9 @@ class DapProxy
     end
     @debugger = DAP::Client.new(config[:adapter], adapter_args)
     @debugger.exec_debug_adapter
+    # What the adapter sent while a request of the proxy waited for its response is forwarded afterwards.
+    @debugger.on_pending = lambda { |message| handle_adapter_message(message) }
+    @debugger.on_timeout = lambda { |command, seconds| @logger.puts "timeout: #{command} (#{seconds}s)" }
     @debugger_config = DEFAULT_DEBUGGER_CONFIG
     if config[:adapter_type] == 'lldb'
       @debugger_config[:variable_references] = 1003
@@ -250,7 +253,13 @@ class DapProxy
   end
 
   def process_adapter
-    message = @debugger.wait_message
+    message = @debugger.poll_message
+    return if message.nil? # still arriving
+
+    handle_adapter_message(message)
+  end
+
+  def handle_adapter_message(message)
     @logger.puts "\t<----------"
     @logger.puts message
     if message['type'] == 'event'
