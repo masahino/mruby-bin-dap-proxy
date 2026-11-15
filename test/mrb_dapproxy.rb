@@ -98,3 +98,62 @@ ensure
   reader.close unless reader.nil? || reader.closed?
   writer.close unless writer.nil? || writer.closed?
 end
+
+class DapProxyForDisconnectTest < DapProxy
+  attr_reader :shutdown_count
+
+  def shutdown_adapter
+    @shutdown_count = (@shutdown_count || 0) + 1
+  end
+end
+
+def build_disconnect_test_proxy(writer)
+  proxy = DapProxyForDisconnectTest.allocate
+  proxy.instance_variable_set(:@debugger, PollingDAPClient.new)
+  proxy.instance_variable_set(:@debugger_config, DapProxy::DEFAULT_DEBUGGER_CONFIG.dup)
+  proxy.instance_variable_set(:@logger, $stderr)
+  proxy.instance_variable_set(:@mruby_code_fetch_bp, nil)
+  proxy.instance_variable_set(:@request_buffer, [])
+  proxy.instance_variable_set(:@client_out, writer)
+  proxy
+end
+
+assert('disconnect_response? recognizes the response to a disconnect request') do
+  proxy = build_mock_dap_proxy
+
+  assert_true proxy.disconnect_response?({ 'type' => 'response', 'command' => 'disconnect', 'success' => true })
+  assert_false proxy.disconnect_response?({ 'type' => 'response', 'command' => 'next' })
+  assert_false proxy.disconnect_response?({ 'type' => 'event', 'event' => 'terminated' })
+  assert_false proxy.disconnect_response?({ 'type' => 'request', 'command' => 'disconnect' })
+end
+
+assert('handle_adapter_message forwards the disconnect response and then shuts the adapter down') do
+  reader, writer = IO.pipe
+  proxy = build_disconnect_test_proxy(writer)
+  response = { 'seq' => 9, 'type' => 'response', 'request_seq' => 4, 'command' => 'disconnect', 'success' => true }
+
+  proxy.handle_adapter_message(response)
+
+  _headers, forwarded = proxy.recv_message(reader)
+  assert_equal response, forwarded
+  assert_equal 1, proxy.shutdown_count
+ensure
+  reader.close unless reader.nil? || reader.closed?
+  writer.close unless writer.nil? || writer.closed?
+end
+
+assert('handle_adapter_message keeps the adapter for other responses') do
+  reader, writer = IO.pipe
+  proxy = build_disconnect_test_proxy(writer)
+
+  proxy.handle_adapter_message({ 'seq' => 9, 'type' => 'response', 'request_seq' => 4, 'command' => 'next', 'success' => true })
+
+  assert_nil proxy.shutdown_count
+ensure
+  reader.close unless reader.nil? || reader.closed?
+  writer.close unless writer.nil? || writer.closed?
+end
+
+assert('the proxy can exit: Kernel#exit comes from the mruby-exit gem') do
+  assert_true Object.new.respond_to?(:exit, true)
+end

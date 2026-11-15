@@ -286,6 +286,18 @@ class DapProxy
     @logger.puts '<=========='
     @logger.puts message
     send_message(@client_out, message)
+    shutdown_adapter if disconnect_response?(message)
+  end
+
+  # The adapter shuts itself down after it has answered a disconnect request.
+  def disconnect_response?(message)
+    message['type'] == 'response' && message['command'] == 'disconnect'
+  end
+
+  def shutdown_adapter
+    @logger.puts 'disconnected: stopping the debug adapter'
+    @debugger.stop_adapter
+    exit
   end
 
   def terminate(message)
@@ -306,7 +318,12 @@ class DapProxy
         if ri == @client_in
           process_client
         elsif ri == @debugger.io
-          process_adapter # unless @debugger.io.eof?
+          begin
+            process_adapter
+          rescue EOFError
+            @logger.puts 'the debug adapter closed the connection'
+            exit
+          end
         end
       end
     end
