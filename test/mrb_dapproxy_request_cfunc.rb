@@ -336,3 +336,21 @@ ensure
   reader.close unless reader.nil? || reader.closed?
   writer.close unless writer.nil? || writer.closed?
 end
+
+##
+## The source of a Ruby frame (mruby_frame_source): a relative path of mruby's own files is passed on as it is.
+##
+
+assert('mruby_frame_source keeps a relative path as it is') do
+  proxy = build_mock_dap_proxy
+
+  assert_equal({ 'path' => 'mrblib/array.rb', 'name' => 'array.rb' }, proxy.mruby_frame_source('mrblib/array.rb'))
+  assert_equal({ 'path' => 'mrbgems/mruby-array-ext/mrblib/array.rb', 'name' => 'array.rb' },
+               proxy.mruby_frame_source('mrbgems/mruby-array-ext/mrblib/array.rb'))
+end
+
+assert('mruby_frame_source gives an absolute path') do
+  proxy = build_mock_dap_proxy
+
+  assert_equal({ 'path' => '/work/a.rb', 'name' => 'a.rb' }, proxy.mruby_frame_source('/work/a.rb'))
+end

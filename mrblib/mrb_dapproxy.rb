@@ -209,6 +209,16 @@ class DapProxy
     @debugger.send_message(message)
   end
 
+  # The source of a Ruby frame. The debug information of mruby's own files (mrblib/array.rb ...) holds a
+  # path relative to the mruby root; Source.new would turn it into a path under the directory the proxy
+  # was started in, which does not exist. A relative path is passed on as it is: the client knows where
+  # to look for it (the editor asks for the source root).
+  def mruby_frame_source(filename)
+    return DAP::Type::Source.new(filename).to_h if filename[0, 1] == '/'
+
+    { 'path' => filename, 'name' => File.basename(filename) }
+  end
+
   def add_mruby_stack(message)
     levels = 0
     @request_buffer.select { |req| req['seq'] == message['request_seq'] }.each do |org_req|
@@ -232,7 +242,7 @@ class DapProxy
       if res['success']
         res['body']['variables'].each do |var|
           if var['name'] == 'filename'
-            mrb_stack['source'] = DAP::Type::Source.new(var['value'].split(' ')[-1].gsub('"', '')).to_h
+            mrb_stack['source'] = mruby_frame_source(var['value'].split(' ')[-1].gsub('"', ''))
           end
           mrb_stack['line'] = var['value'].to_i if var['name'] == 'line'
           @last_ciidx = var['value'].to_i if var['name'] == 'ciidx'
