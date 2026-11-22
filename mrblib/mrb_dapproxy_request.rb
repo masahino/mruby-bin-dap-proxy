@@ -3,12 +3,23 @@ class DapProxy
   def mruby_step_in(message)
     return message unless stop_at_mruby_code?
 
-    #    @mruby_code_fetch_bp.use_stepin_breakpoint = true
-    #    @debugger.setFunctionBreakpoints(@mruby_code_fetch_bp.c_breakpoints) do |res|
-    @debugger.evaluate({ 'expression' => "#{@debugger_config[:expression_prefix]}tbreak mrb_debug_breakpoint_function",
+    # While armed, the debuggee also stops at mrb_debug_cfunc_function when the line calls a C
+    # function (cfunc_step_stopped goes on to that function). One one-shot breakpoint covers both
+    # markers, so the one that is not hit leaves nothing behind.
+    @cfunc_step = nil
+    @in_cfunc = false # the stop is at a Ruby line
+    command = "tbreak #{MRUBY_CODE_FETCH_FUNC}"
+    if cfunc_step_arm
+      command = "breakpoint set -r '#{MRUBY_STEP_IN_PATTERN}' -o true"
+      @cfunc_step = :waiting
+    end
+    @debugger.evaluate({ 'expression' => "#{@debugger_config[:expression_prefix]}#{command}",
                          'context' => 'repl' }) do |res|
       @logger.puts res
-      return message if res['success'] == false
+      if res['success'] == false
+        @cfunc_step = nil
+        return message
+      end
     end
     message['command'] = 'continue'
     message
@@ -48,12 +59,13 @@ class DapProxy
 
   # lldb-dap's command interpreter has no target, so a command such as `expr` cannot see `mrb`.
   # With :watch_evaluate the expression is evaluated by the DAP-managed path instead.
-  def mruby_evaluate(expression)
+  # frame_id: the frame to evaluate in, when it is not the one the stack trace was last read for.
+  def mruby_evaluate(expression, frame_id = nil)
     args = if @debugger_config[:watch_evaluate]
-             { 'expression' => expression, 'context' => 'watch', 'frameId' => native_frame_id }
+             { 'expression' => expression, 'context' => 'watch', 'frameId' => frame_id || native_frame_id }
            else
              { 'expression' => "#{@debugger_config[:expression_prefix]}expr -R -f s -- #{expression}",
-               'frameId' => @last_stack['id'] }
+               'frameId' => frame_id || @last_stack['id'] }
            end
     @logger.puts "mruby_evaluate: context=#{args['context']} frameId=#{args['frameId']} expression=#{args['expression']}"
     res = nil

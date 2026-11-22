@@ -1,6 +1,8 @@
 # DAP proxy
 class DapProxy
   MRUBY_CODE_FETCH_FUNC = 'mrb_debug_breakpoint_function'.freeze
+  MRUBY_CFUNC_FUNC = 'mrb_debug_cfunc_function'.freeze
+  MRUBY_STEP_IN_PATTERN = '^mrb_debug_(breakpoint|cfunc)_function$'.freeze
   MRUBY_VARIABLE_TYPE = %w[local global instance].freeze
 
   DEFAULT_CONFIG = {
@@ -30,6 +32,9 @@ class DapProxy
     @last_ciidx = 999
     @last_stack = nil
     @request_buffer = []
+    @cfunc_step = nil # nil, :waiting, :running, :entering or :returning (see mrb_dapproxy_cfunc.rb)
+    @cfunc_target = nil
+    @in_cfunc = false
   end
 
   def setup_mruby_breakpoint(config)
@@ -162,7 +167,10 @@ class DapProxy
 
   def stop_at_mruby_code?
     return false if @last_stack.nil? || @last_stack['source'].nil?
-    return true if File.extname(@last_stack['source']['path']) == '.rb'
+
+    path = @last_stack['source']['path']
+    return false if path.nil?
+    return true if File.extname(path) == '.rb'
 
     false
   end
@@ -265,10 +273,17 @@ class DapProxy
     if message['type'] == 'event'
       case message['event']
       when 'stopped'
+        return if cfunc_step_stopped(message)
+
         if !@mruby_code_fetch_bp.nil? && @mruby_code_fetch_bp.use_temporary_breakpoint
           delete_temporary_breakpoint
         end
+      when 'exited'
+        @cfunc_step = nil
+        @in_cfunc = false
       when 'terminated'
+        @cfunc_step = nil
+        @in_cfunc = false
         terminate(message)
       end
     end
